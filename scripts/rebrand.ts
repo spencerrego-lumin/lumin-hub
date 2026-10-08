@@ -15,7 +15,7 @@ export const FORK_REPOSITORY = "spencerrego-lumin/lumin-hub";
 const UPSTREAM_REPOSITORY = "pingdotgg/t3code";
 
 const TEXT_EXTENSIONS =
-  /\.(ts|tsx|js|mjs|cjs|json|jsonc|md|mdx|mdc|yml|yaml|sh|ps1|svg|html|css|astro|xml|plist|toml|txt)$/;
+  /\.(ts|tsx|js|mjs|cjs|json|jsonc|ndjson|md|mdx|mdc|yml|yaml|sh|ps1|svg|html|css|astro|xml|plist|toml|txt)$/;
 
 // Hand-maintained or legally attributed files. Upstream edits to these surface
 // as merge conflicts instead of being rewritten.
@@ -28,6 +28,7 @@ const EXCLUDED_PATHS = [
   /^patches\//,
   /^\.repos\//,
   /^scripts\/rebrand\.ts$/,
+  /^\.github\/workflows\/upstream-sync\.yml$/,
   // Fixtures for tool names external agents report, which still say "T3 Code".
   /^packages\/shared\/src\/t3McpToolPresentation\.test\.ts$/,
 ];
@@ -45,18 +46,36 @@ const RELEASE_SOURCE_PATHS = new Set([
   ".github/workflows/release.yml",
 ]);
 
+// "T3 Code (Alpha)" and "T3 Code (Dev)" are also the legacy userData folder
+// names desktop migration still looks for on disk. They stay as-is in these
+// files and on lines about legacy paths, and are rebranded everywhere else.
+const LEGACY_PROFILE_PATHS = new Set([
+  "apps/desktop/src/app/DesktopUserData.ts",
+  "apps/desktop/src/app/DesktopUserData.test.ts",
+  "apps/desktop/src/app/DesktopLegacyLocalStorage.ts",
+  "apps/desktop/src/app/DesktopPreReadyFileSystem.test.ts",
+]);
+const LEGACY_PROFILE_LINE = /legacy|Application Support/i;
+// Optional escapes also match the name written as regex source in tests.
+const LEGACY_PROFILE_NAME = /T3 Code(?= \\?\(\(?(?:Alpha|Dev)\b)/;
+
 const DISPLAY_NAME_RULES: ReadonlyArray<readonly [RegExp, string]> = [
-  // "T3 Code (Alpha)" and "T3 Code (Dev)" are legacy userData folder names
-  // that desktop migration still has to find on disk (also matched as regex
-  // source in tests, hence the optional escapes).
-  [/T3 Code(?! \\?\(\(?(?:Alpha|Dev)\b)/g, "Lumin Hub"],
   [/\bT3 environment\b/g, "Lumin Hub environment"],
   [/\bT3 thread/g, "Lumin Hub thread"],
   [/\b(Open|in) T3\b(?![ -]?[A-Za-z0-9])/g, "$1 Lumin Hub"],
 ];
 
+function rebrandProductName(path: string, content: string): string {
+  const keepLegacy = LEGACY_PROFILE_PATHS.has(path);
+  return content.replace(/^.*T3 Code.*$/gm, (line) =>
+    (keepLegacy || LEGACY_PROFILE_LINE.test(line)) && LEGACY_PROFILE_NAME.test(line)
+      ? line.replace(/T3 Code(?! \\?\(\(?(?:Alpha|Dev)\b)/g, "Lumin Hub")
+      : line.replaceAll("T3 Code", "Lumin Hub"),
+  );
+}
+
 export function rebrandContent(path: string, content: string): string {
-  let next = content;
+  let next = rebrandProductName(path, content);
   for (const [pattern, replacement] of DISPLAY_NAME_RULES) {
     next = next.replace(pattern, replacement);
   }
@@ -85,12 +104,13 @@ function readMergeStage(stage: 1 | 2 | 3, path: string): string | undefined {
   }
 }
 
-const withoutWhitespace = (content: string) => content.replace(/\s+/g, "");
+// The formatter rewraps rebranded lines, adding or removing trailing commas.
+const withoutFormatting = (content: string) =>
+  content.replace(/\s+/g, "").replace(/,(?=[)\]}])/g, "");
 
 // Resolves an in-progress upstream merge where our side of a conflicted file
 // is only the rebrand of the common ancestor: the merge result is then
-// upstream's version, rebranded. Whitespace is ignored because the formatter
-// rewraps rebranded lines. Prints the conflicts that still need a person.
+// upstream's version, rebranded. Prints the conflicts that still need a person.
 function resolveConflicts() {
   const conflicted = new Set(git(["diff", "--name-only", "--diff-filter=U", "-z"]).split("\0"));
   const remaining: string[] = [];
@@ -101,7 +121,7 @@ function resolveConflicts() {
     if (
       base === undefined ||
       ours === undefined ||
-      withoutWhitespace(rebrandContent(path, base)) !== withoutWhitespace(ours)
+      withoutFormatting(rebrandContent(path, base)) !== withoutFormatting(ours)
     ) {
       remaining.push(path);
       continue;
