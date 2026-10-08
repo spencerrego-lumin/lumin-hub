@@ -11,8 +11,9 @@ app_name="Lumin Hub (Alpha).app"
 apps_dir="$HOME/Applications"
 repo_root="$(cd "$(dirname "$0")/.." && pwd)"
 
-# Fixed-string match: pgrep would read the parentheses in the name as regex.
-if ps -axo command= | grep -qF "$app_name/Contents/MacOS/"; then
+# pgrep never matches itself (a `ps | grep` would). The pattern is a regex,
+# so the parentheses and dot in the app name are escaped.
+if pgrep -f 'Lumin Hub \(Alpha\)\.app/Contents/MacOS/' >/dev/null; then
   echo "Quit Lumin Hub first, then run this again." >&2
   exit 1
 fi
