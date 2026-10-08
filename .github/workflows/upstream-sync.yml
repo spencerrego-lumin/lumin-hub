@@ -1,0 +1,137 @@
+# Pulls new T3 Code commits from upstream into a rebranded pull request.
+# Nothing reaches users until that PR is merged into main and released.
+#
+# Requires the UPSTREAM_SYNC_TOKEN secret: a fine-grained token for this repo
+# with Contents, Pull requests, Issues, and Workflows write access. The default
+# GITHUB_TOKEN cannot push upstream's workflow changes, and PRs it opens do not
+# trigger CI.
+name: Upstream sync
+
+on:
+  schedule:
+    - cron: "17 14 * * 1-5"
+  workflow_dispatch:
+
+concurrency:
+  group: upstream-sync
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  UPSTREAM_URL: https://github.com/pingdotgg/t3code.git
+  SYNC_BRANCH: sync/upstream
+
+jobs:
+  sync:
+    if: github.repository == 'spencerrego-lumin/lumin-hub'
+    runs-on: ubuntu-24.04
+    env:
+      GH_TOKEN: ${{ secrets.UPSTREAM_SYNC_TOKEN }}
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          token: ${{ secrets.UPSTREAM_SYNC_TOKEN }}
+
+      - name: Fetch upstream
+        id: upstream
+        run: |
+          git remote add upstream "$UPSTREAM_URL"
+          git fetch --no-tags upstream main
+          sha="$(git rev-parse upstream/main)"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "short=${sha:0:9}" >> "$GITHUB_OUTPUT"
+          if git merge-base --is-ancestor upstream/main HEAD; then
+            echo "Already up to date with upstream $sha."
+            echo "behind=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "behind=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Setup Vite+
+        if: steps.upstream.outputs.behind == 'true'
+        uses: voidzero-dev/setup-vp@v1
+        with:
+          node-version-file: package.json
+          cache: true
+          run-install: true
+
+      - name: Merge upstream and rebrand
+        if: steps.upstream.outputs.behind == 'true'
+        id: merge
+        run: |
+          git config user.name "lumin-hub-sync[bot]"
+          git config user.email "lumin-hub-sync@users.noreply.github.com"
+          git switch -C "$SYNC_BRANCH"
+
+          if ! git merge --no-ff --no-commit upstream/main; then
+            if ! unresolved="$(node scripts/rebrand.ts --resolve-conflicts)"; then
+              {
+                echo "unresolved<<EOF"
+                echo "$unresolved"
+                echo "EOF"
+              } >> "$GITHUB_OUTPUT"
+              git merge --abort
+              exit 0
+            fi
+          fi
+
+          node scripts/rebrand.ts
+          git diff --name-only -z --diff-filter=d HEAD -- . ':!.repos' \
+            | xargs -0 -r vp fmt --no-error-on-unmatched-pattern
+          git add -A
+          git commit -m "chore: sync upstream t3code ${{ steps.upstream.outputs.short }}"
+          git push --force origin "$SYNC_BRANCH"
+
+      - name: Open or update pull request
+        if: steps.upstream.outputs.behind == 'true' && steps.merge.outputs.unresolved == ''
+        run: |
+          body="$(cat <<EOF
+          Merges [pingdotgg/t3code@${{ steps.upstream.outputs.short }}](https://github.com/pingdotgg/t3code/commit/${{ steps.upstream.outputs.sha }}) into main and reapplies the Lumin Hub rebrand (\`scripts/rebrand.ts\`).
+
+          Review the [upstream changes](https://github.com/pingdotgg/t3code/compare/$(git merge-base origin/main upstream/main)...${{ steps.upstream.outputs.sha }}) for anything that should not ship to Lumin Hub users. Merge with a merge commit, not squash, so the next sync starts from this point.
+          EOF
+          )"
+          if gh pr view "$SYNC_BRANCH" --json state --jq .state 2>/dev/null | grep -q OPEN; then
+            gh pr edit "$SYNC_BRANCH" --body "$body" \
+              --title "chore: sync upstream t3code ${{ steps.upstream.outputs.short }}"
+          else
+            gh pr create --base main --head "$SYNC_BRANCH" --body "$body" \
+              --title "chore: sync upstream t3code ${{ steps.upstream.outputs.short }}"
+          fi
+
+      - name: Report conflicts
+        if: steps.merge.outputs.unresolved != ''
+        env:
+          UNRESOLVED: ${{ steps.merge.outputs.unresolved }}
+        run: |
+          title="Upstream sync needs manual conflict resolution"
+          body="$(cat <<EOF
+          Merging pingdotgg/t3code@${{ steps.upstream.outputs.short }} conflicts with Lumin Hub changes beyond the rebrand in:
+
+          $(printf -- '- `%s`\n' $UNRESOLVED)
+
+          Resolve locally, then push and open the PR:
+
+          \`\`\`bash
+          git fetch origin && git switch -C $SYNC_BRANCH origin/main
+          git remote add upstream $UPSTREAM_URL 2>/dev/null; git fetch upstream main
+          git merge upstream/main; node scripts/rebrand.ts --resolve-conflicts
+          # fix the files listed above, then:
+          node scripts/rebrand.ts && git add -A && git commit
+          \`\`\`
+
+          [Workflow run]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID)
+          EOF
+          )"
+          existing="$(gh issue list --state open --search "in:title \"$title\"" --json number --jq '.[0].number')"
+          if [ -n "$existing" ]; then
+            gh issue edit "$existing" --body "$body"
+          else
+            gh issue create --title "$title" --body "$body"
+          fi
+          exit 1

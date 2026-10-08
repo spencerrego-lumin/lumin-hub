@@ -8,7 +8,7 @@ agent can use this endpoint to:
 - create an app-owned sub-agent on any supported provider instance;
 - wait for or poll the sub-agent's durable result;
 - cancel an active delegated task; and
-- create one or more ordinary top-level T3 threads;
+- create one or more ordinary top-level Lumin Hub threads;
 - list a project's threads and incrementally read any thread;
 - rename threads, regenerate titles, and link or unlink pull requests;
 - send or steer follow-up messages; and
@@ -40,8 +40,8 @@ preview toolkit and the orchestration toolkit.
 Before `ProviderSessionManager` opens a new V2 provider session, it asks
 `McpSessionRegistry` for a credential scoped to:
 
-- the T3 environment;
-- the parent T3 thread;
+- the Lumin Hub environment;
+- the parent Lumin Hub thread;
 - the concrete provider instance; and
 - the provider session.
 
@@ -298,7 +298,7 @@ optional cancellation reason.
 
 ### `create_threads`
 
-Creates between one and twenty ordinary top-level T3 threads:
+Creates between one and twenty ordinary top-level Lumin Hub threads:
 
 ```ts
 type CreateThreadsInput = {

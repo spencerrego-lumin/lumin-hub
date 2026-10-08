@@ -136,14 +136,14 @@ const requireThreadCaller = McpInvocationContext.McpInvocationContext.pipe(
 export const reads = <P, A, E, R>(handle: (params: P) => Effect.Effect<A, E, R>) =>
   declare((params: P) => handle(params));
 
-/** Reads what belongs to the calling T3 thread, such as its preview tabs or devices. */
+/** Reads what belongs to the calling Lumin Hub thread, such as its preview tabs or devices. */
 export const readsAsCaller = <P, A, E, R>(handle: (params: P) => Effect.Effect<A, E, R>) =>
   declare((params: P) => requireThreadCaller.pipe(Effect.flatMap(() => handle(params))));
 
 /**
- * Acts as the calling T3 thread (its subagents, preview tabs, devices,
+ * Acts as the calling Lumin Hub thread (its subagents, preview tabs, devices,
  * worktree) while that thread's run is live. Only an agent running inside a
- * T3 thread has one.
+ * Lumin Hub thread has one.
  */
 export const actsAsCaller = <P, A, E, R>(handle: (params: P) => Effect.Effect<A, E, R>) =>
   declare((params: P) =>

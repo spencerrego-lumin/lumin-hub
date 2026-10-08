@@ -28,7 +28,7 @@ capabilities, never the driver kind.
 - **Permission modes.** Offer only modes the provider enforces natively, through
   `supportedRuntimeModes` in the provider presentation ([Grok](../../apps/server/src/provider/GrokProvider.ts)
   and [Pi](../../apps/server/src/provider/PiProvider.ts) are examples). Do not imitate a missing
-  mode by answering approvals in T3: T3's check is weaker than the agent's own enforcement. The
+  mode by answering approvals in Lumin Hub: T3's check is weaker than the agent's own enforcement. The
   server runs an unoffered stored mode as Supervised
   ([`RuntimePolicy.ts`](../../apps/server/src/orchestration-v2/RuntimePolicy.ts)).
 - **Approval and question options.** Pass the provider's own option IDs through unchanged. Every

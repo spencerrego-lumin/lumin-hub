@@ -1063,7 +1063,7 @@ export function makePiAdapterV2(
       /**
        * Observe the result shape from Pi's official example subagent extension.
        * The extension runs children with --no-session, so these entries are
-       * visible in T3's shared subagent UI without inventing a child thread.
+       * visible in Lumin Hub's shared subagent UI without inventing a child thread.
        * Unknown or changed result shapes stay ordinary dynamic tool output.
        */
       const emitSubagentTasks = Effect.fnUntraced(function* (
