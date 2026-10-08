@@ -29,6 +29,8 @@ jobs:
     runs-on: ubuntu-24.04
     env:
       GH_TOKEN: ${{ secrets.UPSTREAM_SYNC_TOKEN }}
+      # gh otherwise targets the `upstream` remote and files PRs on t3code.
+      GH_REPO: ${{ github.repository }}
     steps:
       - name: Checkout main
         uses: actions/checkout@v4
